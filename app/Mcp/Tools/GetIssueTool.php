@@ -71,8 +71,13 @@ final class GetIssueTool extends Tool
                     /** @var array<int, string> $priorities */
                     $priorities = array_column($redmine->getIssuePriorities(), 'name', 'id');
 
-                    /** @var array<int, string> $users */
-                    $users = $this->buildUserNameMap($this->fetchAllUsers($redmine));
+                    $projectId = $this->intOf(data_get($issue, 'project.id'));
+
+                    $users = $this->resolveUserNames(
+                        $redmine,
+                        $projectId > 0 ? $projectId : null,
+                        $this->assigneeIdsIn($journals),
+                    );
                 }
 
                 $lines[] = '';
@@ -101,7 +106,7 @@ final class GetIssueTool extends Tool
                         [$label, $old, $new] = match ($field) {
                             'status_id' => ['Status', $statuses[(int) $old] ?? $old, $statuses[(int) $new] ?? $new],
                             'priority_id' => ['Priority', $priorities[(int) $old] ?? $old, $priorities[(int) $new] ?? $new],
-                            'assigned_to_id' => ['Assigned to', $users[(int) $old] ?? $old, $users[(int) $new] ?? $new],
+                            'assigned_to_id' => ['Assigned to', $this->userLabel($users, $old), $this->userLabel($users, $new)],
                             'done_ratio' => ['Done', $old.'%', $new.'%'],
                             'subject' => ['Subject', $old, $new],
                             'description' => ['Description', mb_substr($old, 0, 30).'…', mb_substr($new, 0, 30).'…'],
@@ -137,5 +142,51 @@ final class GetIssueTool extends Tool
                 ->description('Redmine issue number')
                 ->required(),
         ];
+    }
+
+    /**
+     * Collects the distinct user IDs that appear in assignee changes.
+     *
+     * @param  list<array<string, mixed>>  $journals
+     * @return list<int>
+     */
+    private function assigneeIdsIn(array $journals): array
+    {
+        $ids = [];
+
+        foreach ($journals as $journal) {
+            /** @var list<array<string, mixed>> $details */
+            $details = is_array($journal['details'] ?? null) ? $journal['details'] : [];
+
+            foreach ($details as $detail) {
+                if (($detail['name'] ?? null) !== 'assigned_to_id') {
+                    continue;
+                }
+
+                foreach (['old_value', 'new_value'] as $key) {
+                    $id = $this->intOf($detail[$key] ?? 0);
+
+                    if ($id > 0) {
+                        $ids[] = $id;
+                    }
+                }
+            }
+        }
+
+        return array_values(array_unique($ids));
+    }
+
+    /**
+     * @param  array<int, string>  $users
+     */
+    private function userLabel(array $users, string $value): string
+    {
+        $id = (int) $value;
+
+        if ($id <= 0) {
+            return $value;
+        }
+
+        return $users[$id] ?? 'user #'.$id;
     }
 }
