@@ -21,5 +21,10 @@ RUN chmod +x /usr/local/bin/entrypoint.sh
 
 EXPOSE 8080
 
+# `php artisan serve` hands only `$_ENV` entries to its child process, and PHP's
+# default variables_order omits E — without this the served app would miss
+# REDMINE_* / APP_KEY and fall back to defaults (database cache, no credentials).
+RUN printf 'variables_order = "EGPCS"\n' > /usr/local/etc/php/conf.d/zz-runtime-env.ini
+
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
-CMD ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8080"]
+CMD ["php", "artisan", "serve", "--host=0.0.0.0", "--port=8080", "--no-reload"]
