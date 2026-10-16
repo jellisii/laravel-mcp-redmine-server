@@ -1,0 +1,76 @@
+services:
+  redmine:
+    image: redmine:5.1
+    container_name: redmine
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      REDMINE_DB_MYSQL: db
+      REDMINE_DB_DATABASE: redmine
+      REDMINE_DB_USERNAME: redmine
+      REDMINE_DB_PASSWORD: redmine
+      REDMINE_SECRET_KEY_BASE: supersecretkey
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - redmine_files:/usr/src/redmine/files
+      - redmine_plugins:/usr/src/redmine/plugins
+      - ./docker/redmine:/seed:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  db:
+    image: mysql:8.0
+    container_name: redmine_db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: redmine
+      MYSQL_USER: redmine
+      MYSQL_PASSWORD: redmine
+    volumes:
+      - redmine_db:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uredmine", "-predmine"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mcp:
+    build:
+      context: .
+      dockerfile: docker/mcp/Dockerfile
+    container_name: mcp_server
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      APP_ENV: local
+      APP_KEY: ${APP_KEY}
+      SESSION_DRIVER: array
+      CACHE_STORE: array
+      QUEUE_CONNECTION: sync
+      MCP_AUTH_TOKEN: ${MCP_AUTH_TOKEN}
+      REDMINE_BASE_URL: http://redmine:3000
+      REDMINE_API_KEY: ${REDMINE_API_KEY}
+      REDMINE_DEFAULT_USER_ID: ${REDMINE_DEFAULT_USER_ID:-}
+    depends_on:
+      redmine:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/up"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  redmine_files:
+  redmine_plugins:
+  redmine_db:

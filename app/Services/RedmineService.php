@@ -15,12 +15,27 @@ final readonly class RedmineService extends AbstractHttpService
 
     private string $apiKey;
 
+    private string $username;
+
+    private string $password;
+
     public function __construct()
     {
         $baseUrl = config('redmine.base_url');
         $apiKey = config('redmine.api_key');
+        $username = config('redmine.username');
+        $password = config('redmine.password');
         $this->baseUrl = mb_rtrim(is_string($baseUrl) ? $baseUrl : '', '/');
         $this->apiKey = is_string($apiKey) ? $apiKey : '';
+        $this->username = is_string($username) ? $username : '';
+        $this->password = is_string($password) ? $password : '';
+
+        throw_if($this->baseUrl === '', RuntimeException::class, 'Redmine base URL is not configured. Set REDMINE_BASE_URL in .env.');
+
+        $hasApiKey = $this->apiKey !== '';
+        $hasBasicAuth = $this->username !== '' && $this->password !== '';
+
+        throw_if(! $hasApiKey && ! $hasBasicAuth, RuntimeException::class, 'Redmine authentication is not configured. Set REDMINE_API_KEY or both REDMINE_USERNAME and REDMINE_PASSWORD in .env.');
     }
 
     /**
@@ -317,6 +332,30 @@ final readonly class RedmineService extends AbstractHttpService
     }
 
     /**
+     * @throws ConnectionException
+     * @throws RuntimeException
+     */
+    public function deleteTimeEntry(int $timeEntryId): void
+    {
+        $response = $this->delete(sprintf('/time_entries/%d.json', $timeEntryId));
+
+        throw_if($response->status() === 404, RuntimeException::class, sprintf('deleteTimeEntry: Time entry #%d not found.', $timeEntryId));
+        $this->assertSuccessful(__FUNCTION__, $response);
+    }
+
+    /**
+     * @throws ConnectionException
+     * @throws RuntimeException
+     */
+    public function deleteIssue(int $issueId): void
+    {
+        $response = $this->delete(sprintf('/issues/%d.json', $issueId));
+
+        throw_if($response->status() === 404, RuntimeException::class, sprintf('deleteIssue: Issue #%d not found.', $issueId));
+        $this->assertSuccessful(__FUNCTION__, $response);
+    }
+
+    /**
      * @return array<string, mixed>
      *
      * @throws ConnectionException
@@ -340,6 +379,10 @@ final readonly class RedmineService extends AbstractHttpService
      */
     protected function apiHeaders(): array
     {
+        if ($this->username !== '' && $this->password !== '') {
+            return ['Authorization' => 'Basic '.base64_encode($this->username.':'.$this->password)];
+        }
+
         return ['X-Redmine-API-Key' => $this->apiKey];
     }
 

@@ -56,12 +56,13 @@ final class GetMyTimesTool extends Tool
             $lines = [$header."\n"];
 
             foreach ($entries as $entry) {
+                $entryId = $this->intOf($entry['id']);
                 $issueId = $this->intOf(data_get($entry, 'issue.id'));
                 $hours = $this->floatOf($entry['hours'] ?? 0);
                 $date = $this->strOf($entry['spent_on'] ?? '');
                 $comment = $this->strOf($entry['comments'] ?? '');
                 $activity = $this->strOf(data_get($entry, 'activity.name'));
-                $lines[] = sprintf('• [%s] Issue #%d — %sh (%s): %s', $date, $issueId, $hours, $activity, $comment);
+                $lines[] = sprintf('• ID:%d [%s] Issue #%d — %sh (%s): %s', $entryId, $date, $issueId, $hours, $activity, $comment);
             }
 
             return Response::text(implode("\n", $lines));

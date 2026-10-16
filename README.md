@@ -7,35 +7,42 @@ An [MCP (Model Context Protocol)](https://modelcontextprotocol.io) server built 
 - PHP 8.4+
 - Composer
 - A running Redmine instance with REST API enabled
-- SQLite (default) or any Laravel-supported database
+
+No database required — authentication uses a single bearer token stored in `.env`.
 
 ## Quick start
 
 ```bash
 git clone <repo-url> redmine-mcp
 cd redmine-mcp
-composer setup
+composer install
+cp .env.example .env
+php artisan key:generate
 ```
-
-`composer setup` installs dependencies, copies `.env.example` → `.env`, generates an app key, and runs migrations.
 
 ### Configure `.env`
 
 ```dotenv
+# Redmine instance
 REDMINE_BASE_URL=https://your-redmine.example.com
 REDMINE_API_KEY=your_admin_api_key
 
 # Optional: fallback user ID when /users/current.json returns 403
 REDMINE_DEFAULT_USER_ID=
+
+# Bearer token that clients must send to use the HTTP endpoint
+MCP_AUTH_TOKEN=your-secret-token
 ```
 
-### Create a Sanctum token for your client
+> **Where to find your Redmine API key:** open `https://your-redmine.example.com/my/account` → **API access key** (right sidebar). If the field is missing, ask your Redmine administrator to enable REST API in **Administration → Settings → API**.
+
+Generate a random `MCP_AUTH_TOKEN`:
 
 ```bash
-php artisan mcp:create-token harness-agent
+php artisan mcp:create-token
 ```
 
-Store the printed token — it is shown only once.
+The command prints a 64-character token — copy it to `.env` and to your MCP client config.
 
 ---
 
@@ -43,7 +50,7 @@ Store the printed token — it is shown only once.
 
 ### stdio — Claude Code / local development
 
-Add to `.mcp.json`:
+No authentication required. Add to `.mcp.json`:
 
 ```json
 {
@@ -56,7 +63,7 @@ Add to `.mcp.json`:
 }
 ```
 
-### HTTP — harness agent / Cursor
+### HTTP — harness agent / Cursor / remote clients
 
 Start the server:
 
@@ -65,25 +72,51 @@ php artisan serve --port=8080
 # or via Docker: docker compose up -d mcp
 ```
 
-Every request requires two headers:
+Every request requires:
 
 | Header | Value |
 |---|---|
-| `Authorization` | `Bearer <sanctum_token>` |
-| `X-Redmine-API-Key` | `<user_redmine_token>` |
+| `Authorization` | `Bearer <MCP_AUTH_TOKEN>` |
+| `X-Redmine-API-Key` | *(optional)* personal Redmine API key — overrides `REDMINE_API_KEY` for this request |
+| `X-Redmine-Username` | *(optional)* Redmine username for Basic Auth — use together with `X-Redmine-Password` |
+| `X-Redmine-Password` | *(optional)* Redmine password for Basic Auth — use together with `X-Redmine-Username` |
+| `X-Redmine-Base-URL` | *(optional)* Redmine base URL — overrides `REDMINE_BASE_URL` for this request |
 
-The `X-Redmine-API-Key` header overrides the `.env` admin token for that request — all Redmine operations are performed under the user's own identity (correct author, time entry attribution, scoped permissions).
+`X-Redmine-API-Key` scopes all Redmine operations to the user's own identity (correct author, time entry attribution, scoped permissions).
+
+If `X-Redmine-Username` and `X-Redmine-Password` are both provided, the server uses HTTP Basic Auth for Redmine API calls instead of the API key. This is useful when the user doesn't know their Redmine API token.
+
+`X-Redmine-Base-URL` lets a single MCP server instance proxy requests to different Redmine installations.
+
+**Claude Code** (`.mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "redmine-production": {
+      "type": "streamable-http",
+      "url": "http://localhost:8080/mcp/redmine",
+      "headers": {
+        "Authorization": "Bearer <MCP_AUTH_TOKEN>",
+        "X-Redmine-API-Key": "<your_redmine_api_key>",
+        "X-Redmine-Base-URL": "https://your-redmine.example.com"
+      }
+    }
+  }
+}
+```
 
 **Cursor** (`.cursor/mcp.json`):
 
 ```json
 {
   "mcpServers": {
-    "redmine": {
+    "redmine-production": {
       "url": "http://localhost:8080/mcp/redmine",
       "headers": {
-        "Authorization": "Bearer <sanctum_token>",
-        "X-Redmine-API-Key": "<your_redmine_api_key>"
+        "Authorization": "Bearer <MCP_AUTH_TOKEN>",
+        "X-Redmine-API-Key": "<your_redmine_api_key>",
+        "X-Redmine-Base-URL": "https://your-redmine.example.com"
       }
     }
   }
@@ -94,18 +127,35 @@ The `X-Redmine-API-Key` header overrides the `.env` admin token for that request
 
 ## Docker
 
+### Production — MCP server only
+
+`docker-compose.yml` runs only the MCP server. It connects to an external Redmine instance configured via environment variables.
+
+```bash
+# Set required vars (or put them in .env)
+export APP_KEY=...
+export MCP_AUTH_TOKEN=...
+export REDMINE_BASE_URL=https://your-redmine.example.com
+export REDMINE_API_KEY=...   # or use REDMINE_USERNAME + REDMINE_PASSWORD
+
+docker compose up -d
+```
+
+| Service | Port | Description |
+|---|---|---|
+| `mcp` | 8080 | Laravel MCP HTTP server |
+
+### Local / test — full stack
+
+`docker-compose.local.yml` starts Redmine + MySQL + MCP server for local development and integration testing.
+
 ```bash
 # Start Redmine + MySQL + MCP server
-docker compose up -d
+docker compose -f docker-compose.local.yml up -d
 
 # Seed Redmine with default data, test users and projects (first time)
 bash docker/scripts/redmine-init.sh
-
-# Create a harness token
-docker compose exec mcp php artisan mcp:create-token harness-agent
 ```
-
-Services:
 
 | Service | Port | Description |
 |---|---|---|
@@ -131,10 +181,11 @@ All tools that accept `redmine_user_id` resolve it automatically when omitted: f
 | `get-my-times-tool` | Yes | Time entries for a user in a date range |
 | `get-assigned-issues-tool` | Yes | Open issues assigned to a user |
 | `get-project-issues-tool` | Yes | Issues in a project with filters |
+| `check-unlogged-users-tool` | Yes | Users with no time entries on a date |
 | `log-time-tool` | No | Log work time on an issue |
 | `create-issue-tool` | No | Create a new issue |
 | `update-issue-status-tool` | No | Change issue status |
-| `check-unlogged-users-tool` | Yes | Users with no time entries on a date |
+| `delete-issue-tool` | No | Permanently delete an issue (irreversible) |
 
 Call the reference tools (`get-trackers-tool`, `get-issue-priorities-tool`, `get-issue-statuses-tool`, `get-time-entry-activities-tool`) before using IDs in mutating tools — Redmine instance IDs are not portable across installations.
 
@@ -164,7 +215,7 @@ List tools that return more than one page include a pagination hint in the respo
 | `hours` | number | Yes | Hours spent (e.g. `1.5`) |
 | `comment` | string | Yes | Description of work done |
 | `date` | string | No | `YYYY-MM-DD` (default: today) |
-| `activity_id` | integer | No | Activity ID — use `get-time-entry-activities-tool` (default: Redmine default activity) |
+| `activity_id` | integer | No | Activity ID — use `get-time-entry-activities-tool` |
 | `user_id` | integer | No | Log on behalf of another user (admin key required) |
 
 #### `get-my-times-tool`
@@ -205,6 +256,12 @@ List tools that return more than one page include a pagination hint in the respo
 |---|---|---|---|
 | `issue_id` | integer | Yes | Redmine issue number |
 | `status_id` | integer | Yes | Status ID — use `get-issue-statuses-tool` |
+
+#### `delete-issue-tool`
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `issue_id` | integer | Yes | Redmine issue number to permanently delete |
 
 #### `get-project-issues-tool`
 
@@ -254,25 +311,26 @@ Logs for Redmine API calls: `storage/logs/redmine-YYYY-MM-DD.log`
 ```
 app/
   Console/Commands/
-    CreateMcpToken.php          — php artisan mcp:create-token <name>
+    CreateMcpToken.php              — php artisan mcp:create-token
   Http/Middleware/
-    InjectRedmineApiKey.php     — maps X-Redmine-API-Key header → config per request
+    VerifyMcpToken.php              — validates Authorization: Bearer <MCP_AUTH_TOKEN>
+    InjectRedmineApiKey.php         — maps X-Redmine-API-Key / X-Redmine-Base-URL headers → config per request
   Mcp/
     Concerns/
-      CastsApiData.php          — strOf / intOf / floatOf for API response arrays
-      FetchesRedminePages.php   — bounded pagination + user name map for journal history
-      ResolvesRedmineUser.php   — user ID resolution chain (request → API → env fallback)
+      CastsApiData.php              — strOf / intOf / floatOf for API response arrays
+      FetchesRedminePages.php       — bounded pagination + user name map for journal history
+      RegistersForRedmineAdmin.php  — shouldRegister() — skips tool when API key lacks admin access
+      ResolvesRedmineUser.php       — user ID resolution chain (request → API → env fallback)
     Servers/
-      RedmineServer.php         — registers all tools
+      RedmineServer.php             — registers all tools
     Tools/
-      *.php                     — one file per tool
+      *.php                         — one file per tool
   Services/
-    AbstractHttpService.php     — base HTTP client (get/post/put, error handling, JSON helpers)
-    RedmineService.php          — Redmine REST API client
+    AbstractHttpService.php         — base HTTP client (get/post/put/delete, error handling, JSON helpers)
+    RedmineService.php              — Redmine REST API client
 config/
-  redmine.php
+  mcp.php                           — MCP_AUTH_TOKEN
+  redmine.php                       — REDMINE_BASE_URL, REDMINE_API_KEY, REDMINE_DEFAULT_USER_ID
 routes/
-  ai.php                        — Mcp::web() and Mcp::local() registration
-docs/
-  mcp-integration.md            — detailed integration guide
+  ai.php                            — Mcp::web() and Mcp::local() registration
 ```

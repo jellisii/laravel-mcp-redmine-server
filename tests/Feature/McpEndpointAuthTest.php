@@ -2,25 +2,36 @@
 
 declare(strict_types=1);
 
-use App\Models\User;
-use Laravel\Sanctum\Sanctum;
+use Illuminate\Support\Facades\Http;
+
+beforeEach(function (): void {
+    config([
+        'mcp.auth_token' => 'test-secret-token',
+        'redmine.base_url' => 'https://redmine.test',
+        'redmine.api_key' => 'test-api-key',
+    ]);
+
+    Http::fake([
+        'redmine.test/users/current.json*' => Http::response(['user' => ['id' => 1, 'admin' => true]], 200),
+    ]);
+});
 
 it('returns 401 when no bearer token is provided', function (): void {
     $this->postJson('/mcp/redmine')->assertUnauthorized();
 });
 
-it('returns 401 for an invalid bearer token without accept json header', function (): void {
+it('returns 401 for an invalid bearer token', function (): void {
     $response = $this->post('/mcp/redmine', [
         'jsonrpc' => '2.0',
         'method' => 'tools/list',
         'id' => 1,
     ], [
-        'Authorization' => 'Bearer invalid-token',
+        'Authorization' => 'Bearer wrong-token',
         'Content-Type' => 'application/json',
     ]);
 
     $response->assertUnauthorized()
-        ->assertJson(['message' => 'Unauthenticated.']);
+        ->assertJson(['message' => 'Unauthorized.']);
 });
 
 it('returns 401 when no bearer token is provided without accept json header', function (): void {
@@ -33,23 +44,15 @@ it('returns 401 when no bearer token is provided without accept json header', fu
     ]);
 
     $response->assertUnauthorized()
-        ->assertJson(['message' => 'Unauthenticated.']);
+        ->assertJson(['message' => 'Unauthorized.']);
 });
 
-it('returns 403 when token lacks the mcp ability', function (): void {
-    Sanctum::actingAs(User::factory()->create(), ['other-ability']);
-
-    $this->postJson('/mcp/redmine')->assertForbidden();
-});
-
-it('passes auth when token has the mcp ability', function (): void {
-    Sanctum::actingAs(User::factory()->create(), ['mcp']);
-
+it('passes auth when correct token is provided', function (): void {
     $response = $this->postJson('/mcp/redmine', [
         'jsonrpc' => '2.0',
         'method' => 'tools/list',
         'id' => 1,
-    ]);
+    ], ['Authorization' => 'Bearer test-secret-token']);
 
     $response->assertOk();
 });

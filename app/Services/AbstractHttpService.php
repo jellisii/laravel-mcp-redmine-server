@@ -61,6 +61,17 @@ abstract readonly class AbstractHttpService
     }
 
     /**
+     * @throws ConnectionException
+     */
+    protected function delete(string $path): Response
+    {
+        $this->logRequest('DELETE', $path);
+
+        return Http::timeout(10)->withHeaders($this->apiHeaders())->acceptJson()
+            ->delete($this->apiBaseUrl().$path);
+    }
+
+    /**
      * @throws RuntimeException
      */
     protected function assertSuccessful(string $context, Response $response): void

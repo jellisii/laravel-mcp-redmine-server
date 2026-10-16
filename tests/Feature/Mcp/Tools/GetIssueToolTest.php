@@ -228,6 +228,7 @@ it('renders all supported journal detail field types', function (): void {
             ['id' => 1, 'name' => 'Normal'],
             ['id' => 3, 'name' => 'High'],
         ]], 200),
+        'redmine.test/users/current.json' => Http::response(['user' => ['id' => 1, 'admin' => true]], 200),
         'redmine.test/users.json*' => Http::response(['users' => [
             ['id' => 0, 'login' => 'invalid', 'firstname' => 'Skip', 'lastname' => 'Me'],
             ['id' => 1, 'login' => 'alice', 'firstname' => 'Alice', 'lastname' => 'Smith'],
@@ -258,4 +259,59 @@ it('renders all supported journal detail field types', function (): void {
         ->and($text)->toContain('svc-bot')
         ->and($text)->toContain('new_val')
         ->and($text)->toContain('custom_field');
+});
+
+it('does not fetch users for non-admin when rendering journal history', function (): void {
+    Http::fake([
+        'redmine.test/issues/40.json*' => Http::response([
+            'issue' => [
+                'id' => 40,
+                'subject' => 'Meeting prep',
+                'project' => ['name' => 'MCP Test Project'],
+                'status' => ['name' => 'In Progress'],
+                'priority' => ['name' => 'Normal'],
+                'assigned_to' => ['name' => 'Alice Smith'],
+                'author' => ['name' => 'Redmine Admin'],
+                'created_on' => '2026-05-22T00:00:00Z',
+                'updated_on' => '2026-05-22T00:00:00Z',
+                'done_ratio' => 0,
+                'journals' => [
+                    [
+                        'user' => ['name' => 'Alice Smith'],
+                        'created_on' => '2026-05-22T00:00:00Z',
+                        'notes' => '',
+                        'details' => [
+                            ['name' => 'status_id', 'old_value' => '1', 'new_value' => '2'],
+                            ['name' => 'assigned_to_id', 'old_value' => '1', 'new_value' => '5'],
+                        ],
+                    ],
+                ],
+            ],
+        ], 200),
+        'redmine.test/issue_statuses.json' => Http::response(['issue_statuses' => [
+            ['id' => 1, 'name' => 'New'],
+            ['id' => 2, 'name' => 'In Progress'],
+        ]], 200),
+        'redmine.test/enumerations/issue_priorities.json' => Http::response(['issue_priorities' => [
+            ['id' => 1, 'name' => 'Normal'],
+        ]], 200),
+        'redmine.test/users/current.json' => Http::response(['user' => ['id' => 5, 'admin' => false]], 200),
+    ]);
+
+    $response = (new GetIssueTool)->handle(
+        new Request(['issue_id' => 40]),
+        new RedmineService,
+    );
+
+    $text = $response->content()->toArray()['text'];
+
+    expect($response->isError())->toBeFalse()
+        ->and($text)->toContain('Issue #40')
+        ->and($text)->toContain('Change History')
+        ->and($text)->toContain('New')
+        ->and($text)->toContain('In Progress')
+        ->and($text)->toContain('Assigned to:')
+        ->and($text)->toContain('1  →  5');
+
+    Http::assertNotSent(fn ($req): bool => str_contains((string) $req->url(), 'users.json'));
 });

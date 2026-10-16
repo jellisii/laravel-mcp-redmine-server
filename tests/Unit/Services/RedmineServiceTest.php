@@ -351,3 +351,33 @@ it('returns empty array when json object key is not an array', function (): void
 
     expect($issue)->toBeArray()->toBeEmpty();
 });
+
+it('throws when REDMINE_BASE_URL is not configured', function (): void {
+    config(['redmine.base_url' => '', 'redmine.api_key' => 'some-key']);
+
+    expect(fn () => new RedmineService)
+        ->toThrow(RuntimeException::class, 'REDMINE_BASE_URL');
+});
+
+it('throws when neither api key nor credentials are configured', function (): void {
+    config(['redmine.base_url' => 'https://redmine.test', 'redmine.api_key' => '', 'redmine.username' => '', 'redmine.password' => '']);
+
+    expect(fn () => new RedmineService)
+        ->toThrow(RuntimeException::class, 'REDMINE_API_KEY');
+});
+
+it('does not throw when username and password are provided without api key', function (): void {
+    config(['redmine.base_url' => 'https://redmine.test', 'redmine.api_key' => '', 'redmine.username' => 'john', 'redmine.password' => 'secret']);
+
+    expect(fn () => new RedmineService)->not->toThrow(RuntimeException::class);
+});
+
+it('uses Basic Auth header when username and password are configured', function (): void {
+    config(['redmine.base_url' => 'https://redmine.test', 'redmine.api_key' => '', 'redmine.username' => 'john', 'redmine.password' => 'secret']);
+
+    Http::fake(['redmine.test/projects.json*' => Http::response(['projects' => [], 'total_count' => 0], 200)]);
+
+    (new RedmineService)->getProjects();
+
+    Http::assertSent(fn ($req): bool => $req->header('Authorization')[0] === 'Basic '.base64_encode('john:secret'));
+});

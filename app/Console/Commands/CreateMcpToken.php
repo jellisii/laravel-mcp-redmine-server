@@ -4,35 +4,26 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
-use App\Models\User;
 use Illuminate\Console\Command;
 use Illuminate\Support\Str;
 
 final class CreateMcpToken extends Command
 {
-    protected $signature = 'mcp:create-token {name : Token name / client identifier}';
+    protected $signature = 'mcp:create-token';
 
-    protected $description = 'Create a Sanctum token for an MCP client';
+    protected $description = 'Generate a random token to use as MCP_AUTH_TOKEN';
 
     public function handle(): int
     {
-        $name = (string) ($this->argument('name'));
+        $token = Str::random(64);
 
-        $user = User::query()->firstOrCreate(
-            ['email' => 'mcp-service@localhost'],
-            [
-                'name' => 'MCP Service Account',
-                'password' => bcrypt(Str::random(32)),
-            ]
-        );
-
-        $token = $user->createToken($name, ['mcp'])->plainTextToken;
-
-        $this->info('Token created for client: '.$name);
+        $this->info('Generated MCP auth token.');
         $this->line('');
-        $this->warn('Store this token securely — it will not be shown again.');
+        $this->warn('Add this to your .env file:');
         $this->line('');
-        $this->line($token);
+        $this->line('MCP_AUTH_TOKEN='.$token);
+        $this->line('');
+        $this->warn('Store this token securely — it grants full access to the MCP server.');
 
         return self::SUCCESS;
     }

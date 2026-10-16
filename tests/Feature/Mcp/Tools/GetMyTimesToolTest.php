@@ -30,6 +30,27 @@ it('returns formatted time entries', function (): void {
         ->and($response->content()->toArray()['text'])->toContain('Issue #10');
 });
 
+it('displays time entry id in output', function (): void {
+    Http::fake([
+        'redmine.test/time_entries.json*' => Http::response([
+            'time_entries' => [
+                ['id' => 42, 'hours' => 1.5, 'spent_on' => '2026-06-01', 'issue' => ['id' => 7], 'comments' => 'Debugging', 'activity' => ['name' => 'Dev']],
+            ],
+            'total_count' => 1,
+        ], 200),
+    ]);
+
+    $response = (new GetMyTimesTool)->handle(
+        new Request(['redmine_user_id' => 5, 'date_from' => '2026-06-01', 'date_to' => '2026-06-01']),
+        new RedmineService,
+    );
+
+    $text = $response->content()->toArray()['text'];
+
+    expect($response->isError())->toBeFalse()
+        ->and($text)->toContain('ID:42');
+});
+
 it('shows pagination hint when more entries exist', function (): void {
     Http::fake([
         'redmine.test/time_entries.json*' => Http::response([

@@ -8,6 +8,7 @@ use App\Mcp\Concerns\CastsApiData;
 use App\Mcp\Concerns\FetchesRedminePages;
 use App\Services\RedmineService;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Illuminate\Http\Client\ConnectionException;
 use Laravel\Mcp\Request;
 use Laravel\Mcp\Response;
 use Laravel\Mcp\Server\Attributes\Description;
@@ -71,8 +72,10 @@ final class GetIssueTool extends Tool
                     /** @var array<int, string> $priorities */
                     $priorities = array_column($redmine->getIssuePriorities(), 'name', 'id');
 
-                    /** @var array<int, string> $users */
-                    $users = $this->buildUserNameMap($this->fetchAllUsers($redmine));
+                    if ($this->isRedmineAdmin($redmine)) {
+                        /** @var array<int, string> $users */
+                        $users = $this->buildUserNameMap($this->fetchAllUsers($redmine));
+                    }
                 }
 
                 $lines[] = '';
@@ -137,5 +140,16 @@ final class GetIssueTool extends Tool
                 ->description('Redmine issue number')
                 ->required(),
         ];
+    }
+
+    private function isRedmineAdmin(RedmineService $redmine): bool
+    {
+        try {
+            $user = $redmine->getCurrentUser();
+
+            return (bool) ($user['admin'] ?? false);
+        } catch (RuntimeException|ConnectionException) {
+            return false;
+        }
     }
 }

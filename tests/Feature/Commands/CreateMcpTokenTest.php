@@ -2,26 +2,20 @@
 
 declare(strict_types=1);
 
-use App\Models\User;
+use Illuminate\Support\Facades\Artisan;
 
-it('creates a sanctum token and outputs it', function (): void {
-    $this->artisan('mcp:create-token', ['name' => 'test-client'])
-        ->expectsOutputToContain('Token created for client: test-client')
-        ->expectsOutputToContain('Store this token securely')
+it('outputs a token to set as MCP_AUTH_TOKEN', function (): void {
+    $this->artisan('mcp:create-token')
+        ->expectsOutputToContain('MCP_AUTH_TOKEN=')
         ->assertSuccessful();
 });
 
-it('creates the mcp service account user on first run', function (): void {
-    expect(User::query()->where('email', 'mcp-service@localhost')->exists())->toBeFalse();
+it('outputs a 64-character random token', function (): void {
+    Artisan::call('mcp:create-token');
+    $output = Artisan::output();
 
-    $this->artisan('mcp:create-token', ['name' => 'test-client'])->assertSuccessful();
+    preg_match('/MCP_AUTH_TOKEN=(\S+)/', $output, $matches);
 
-    expect(User::query()->where('email', 'mcp-service@localhost')->exists())->toBeTrue();
-});
-
-it('reuses existing mcp service account on repeated runs', function (): void {
-    $this->artisan('mcp:create-token', ['name' => 'client-a'])->assertSuccessful();
-    $this->artisan('mcp:create-token', ['name' => 'client-b'])->assertSuccessful();
-
-    expect(User::query()->where('email', 'mcp-service@localhost')->count())->toBe(1);
+    expect($matches)->toHaveKey(1)
+        ->and(mb_strlen($matches[1]))->toBe(64);
 });

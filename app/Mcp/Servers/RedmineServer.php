@@ -6,6 +6,8 @@ namespace App\Mcp\Servers;
 
 use App\Mcp\Tools\CheckUnloggedUsersTool;
 use App\Mcp\Tools\CreateIssueTool;
+use App\Mcp\Tools\DeleteIssueTool;
+use App\Mcp\Tools\DeleteTimeEntryTool;
 use App\Mcp\Tools\GetAssignedIssuesTool;
 use App\Mcp\Tools\GetIssuePrioritiesTool;
 use App\Mcp\Tools\GetIssueStatusesTool;
@@ -33,6 +35,8 @@ use Laravel\Mcp\Server\Attributes\Version;
 )]
 final class RedmineServer extends Server
 {
+    public int $defaultPaginationLength = 50;
+
     protected array $tools = [
         GetProjectsTool::class,
         GetTrackersTool::class,
@@ -46,6 +50,8 @@ final class RedmineServer extends Server
         GetAssignedIssuesTool::class,
         CreateIssueTool::class,
         UpdateIssueStatusTool::class,
+        DeleteIssueTool::class,
+        DeleteTimeEntryTool::class,
         GetProjectIssuesTool::class,
         CheckUnloggedUsersTool::class,
     ];

@@ -5,16 +5,15 @@ declare(strict_types=1);
 use App\Mcp\Tools\CheckUnloggedUsersTool;
 use App\Mcp\Tools\GetProjectsTool;
 use App\Mcp\Tools\GetUsersTool;
-use App\Models\User;
 use App\Services\RedmineService;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
-use Laravel\Sanctum\Sanctum;
 
 beforeEach(function (): void {
     config([
         'redmine.base_url' => 'https://redmine.test',
         'redmine.api_key' => 'test-api-key',
+        'mcp.auth_token' => 'test-mcp-token',
     ]);
 });
 
@@ -79,8 +78,6 @@ it('omits admin-only tools from tools list for non-admin api keys', function ():
         'redmine.test/users/current.json' => Http::response(['user' => ['id' => 5, 'admin' => false]], 200),
     ]);
 
-    Sanctum::actingAs(User::factory()->create(), ['mcp']);
-
     $initialize = $this->postJson('/mcp/redmine', [
         'jsonrpc' => '2.0',
         'method' => 'initialize',
@@ -91,6 +88,7 @@ it('omits admin-only tools from tools list for non-admin api keys', function ():
             'clientInfo' => ['name' => 'test', 'version' => '1.0'],
         ],
     ], [
+        'Authorization' => 'Bearer test-mcp-token',
         'X-Redmine-API-Key' => 'alice-personal-key',
     ])->assertSuccessful();
 
@@ -101,6 +99,7 @@ it('omits admin-only tools from tools list for non-admin api keys', function ():
         'method' => 'tools/list',
         'id' => 2,
     ], [
+        'Authorization' => 'Bearer test-mcp-token',
         'X-Redmine-API-Key' => 'alice-personal-key',
         'MCP-Session-Id' => $sessionId,
     ])->assertSuccessful();
@@ -112,15 +111,13 @@ it('omits admin-only tools from tools list for non-admin api keys', function ():
     expect($toolNames)->toContain('get-projects-tool')
         ->and($toolNames)->not->toContain('get-users-tool')
         ->and($toolNames)->not->toContain('check-unlogged-users-tool')
-        ->and($toolNames)->toHaveCount(12);
+        ->and($toolNames)->toHaveCount(14);
 });
 
 it('includes admin-only tools in tools list for admin api keys', function (): void {
     Http::fake([
         'redmine.test/users/current.json' => Http::response(['user' => ['id' => 1, 'admin' => true]], 200),
     ]);
-
-    Sanctum::actingAs(User::factory()->create(), ['mcp']);
 
     $initialize = $this->postJson('/mcp/redmine', [
         'jsonrpc' => '2.0',
@@ -132,6 +129,7 @@ it('includes admin-only tools in tools list for admin api keys', function (): vo
             'clientInfo' => ['name' => 'test', 'version' => '1.0'],
         ],
     ], [
+        'Authorization' => 'Bearer test-mcp-token',
         'X-Redmine-API-Key' => 'admin-personal-key',
     ])->assertSuccessful();
 
@@ -142,6 +140,7 @@ it('includes admin-only tools in tools list for admin api keys', function (): vo
         'method' => 'tools/list',
         'id' => 2,
     ], [
+        'Authorization' => 'Bearer test-mcp-token',
         'X-Redmine-API-Key' => 'admin-personal-key',
         'MCP-Session-Id' => $sessionId,
     ])->assertSuccessful();
@@ -152,5 +151,5 @@ it('includes admin-only tools in tools list for admin api keys', function (): vo
 
     expect($toolNames)->toContain('get-users-tool')
         ->and($toolNames)->toContain('check-unlogged-users-tool')
-        ->and($toolNames)->toHaveCount(14);
+        ->and($toolNames)->toHaveCount(16);
 });
