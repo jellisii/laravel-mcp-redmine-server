@@ -4,15 +4,15 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use Illuminate\Console\Attributes\Description;
+use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 use Illuminate\Support\Str;
 
+#[Description('Generate a random token to use as MCP_AUTH_TOKEN')]
+#[Signature('mcp:create-token')]
 final class CreateMcpToken extends Command
 {
-    protected $signature = 'mcp:create-token';
-
-    protected $description = 'Generate a random token to use as MCP_AUTH_TOKEN';
-
     public function handle(): int
     {
         $token = Str::random(64);
