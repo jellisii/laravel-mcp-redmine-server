@@ -188,6 +188,7 @@ All tools that accept `redmine_user_id` resolve it automatically when omitted: f
 | `create-issue-tool` | No | Create a new issue |
 | `update-issue-status-tool` | No | Change issue status |
 | `delete-issue-tool` | No | Permanently delete an issue (irreversible) |
+| `delete-time-entry-tool` | No | Permanently delete a time entry (irreversible) |
 
 Call the reference tools (`get-trackers-tool`, `get-issue-priorities-tool`, `get-issue-statuses-tool`, `get-time-entry-activities-tool`) before using IDs in mutating tools — Redmine instance IDs are not portable across installations.
 
@@ -264,6 +265,12 @@ List tools that return more than one page include a pagination hint in the respo
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `issue_id` | integer | Yes | Redmine issue number to permanently delete |
+
+#### `delete-time-entry-tool`
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `time_entry_id` | integer | Yes | Redmine time entry ID to permanently delete. `get-my-times-tool` prints it as `ID:<n>`. |
 
 #### `get-project-issues-tool`
 

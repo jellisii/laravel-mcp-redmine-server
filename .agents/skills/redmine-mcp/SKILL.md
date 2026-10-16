@@ -2,7 +2,7 @@
 
 ## When to activate this skill
 
-Activate whenever you need to interact with Redmine: create or delete issues, update statuses, log time, list projects or users, or check time-tracking compliance.
+Activate whenever you need to interact with Redmine: create or delete issues, delete time entries, update statuses, log time, list projects or users, or check time-tracking compliance.
 
 ---
 
@@ -52,6 +52,7 @@ As an alternative to `X-Redmine-API-Key`, you can authenticate with Redmine cred
 | `log-time-tool` | Log hours worked on an issue, with optional date and activity type. |
 | `get-my-times-tool` | Retrieve a user's time entries for a date range. Paginated. |
 | `check-unlogged-users-tool` | Find users who have not logged any time on a given date. |
+| `delete-time-entry-tool` | Permanently delete a time entry (shown as `ID:<n>` by `get-my-times-tool`). **Irreversible — always confirm with the user first.** |
 
 ---
 
@@ -67,6 +68,7 @@ Redmine tools require integer IDs, not names. Resolve them with discovery tools 
 | any tool with `assigned_to_id` | `get-users-tool` (admin key required) |
 | `create-issue-tool` with `assigned_to_id` | verify the assignee is a project member — see **Assignee validation** below |
 | `delete-issue-tool` | `get-issue-tool` (confirm the issue exists and user approves deletion) |
+| `delete-time-entry-tool` | `get-my-times-tool` (find the entry ID and get user approval before deleting) |
 
 ---
 
@@ -114,6 +116,14 @@ check-unlogged-users-tool   → find users with no time entries on a date
 get-my-times-tool           → drill into a specific user's entries for context
 ```
 
+### 6. Delete a time entry
+
+```
+get-my-times-tool           → find the entry ID (shown as ID:<n>)
+[user confirms]
+delete-time-entry-tool      → permanently delete the entry
+```
+
 ---
 
 ## Assignee validation
@@ -148,7 +158,7 @@ When the user specifies which MCP server identity should perform an action (e.g.
 
 1. **Never use curl or any HTTP client directly** — all Redmine interactions MUST go through the MCP server tools listed above. Do not call the Redmine REST API with curl, wget, fetch, or any other HTTP mechanism, even if a tool seems unavailable. If a needed operation has no corresponding tool, say so and ask the user — do not work around it.
 2. **Confirm before mutating** — for create, update, delete, and log-time operations, summarise what you are about to do and get explicit user approval.
-3. **Delete is irreversible** — always show the issue title and ID before calling `delete-issue-tool`.
+3. **Delete is irreversible** — always show the issue title and ID before calling `delete-issue-tool`, and the entry ID, date, hours, and comment before `delete-time-entry-tool`.
 4. **Pagination** — list tools default to 25–100 results. Use `offset` + `limit` to page through large result sets.
 5. **403 on get-users-tool** — means the configured API key is not an admin key; ask the user to provide one via `X-Redmine-API-Key`.
 6. **Per-user context** — pass a user's personal Redmine API key as `X-Redmine-API-Key` on the HTTP request to perform actions on their behalf (time logging, issue assignment).
