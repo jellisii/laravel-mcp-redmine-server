@@ -78,9 +78,6 @@ it('renders journal change history with resolved names', function (): void {
         'redmine.test/enumerations/issue_priorities.json' => Http::response(['issue_priorities' => [
             ['id' => 1, 'name' => 'Normal'],
         ]], 200),
-        'redmine.test/users.json*' => Http::response(['users' => [
-            ['id' => 1, 'login' => 'alice', 'firstname' => 'Alice', 'lastname' => 'Smith'],
-        ]], 200),
     ]);
 
     $response = (new GetIssueTool)->handle(
@@ -96,6 +93,10 @@ it('renders journal change history with resolved names', function (): void {
         ->and($text)->toContain('Started working on this.')
         ->and($text)->toContain('New')
         ->and($text)->toContain('In Progress');
+
+    // No assignee changes, so no user lookups of any kind.
+    Http::assertNotSent(fn ($req): bool => str_contains((string) $req->url(), '/users'));
+    Http::assertNotSent(fn ($req): bool => str_contains((string) $req->url(), '/memberships.json'));
 });
 
 it('renders note-only journals without loading reference data', function (): void {
@@ -186,7 +187,7 @@ it('renders all supported journal detail field types', function (): void {
             'issue' => [
                 'id' => 30,
                 'subject' => 'Field types test',
-                'project' => ['name' => 'App'],
+                'project' => ['id' => 7, 'name' => 'App'],
                 'status' => ['name' => 'New'],
                 'priority' => ['name' => 'Normal'],
                 'author' => ['name' => 'Alice'],
@@ -228,13 +229,17 @@ it('renders all supported journal detail field types', function (): void {
             ['id' => 1, 'name' => 'Normal'],
             ['id' => 3, 'name' => 'High'],
         ]], 200),
-        'redmine.test/users/current.json' => Http::response(['user' => ['id' => 1, 'admin' => true]], 200),
-        'redmine.test/users.json*' => Http::response(['users' => [
-            ['id' => 0, 'login' => 'invalid', 'firstname' => 'Skip', 'lastname' => 'Me'],
-            ['id' => 1, 'login' => 'alice', 'firstname' => 'Alice', 'lastname' => 'Smith'],
-            ['id' => 2, 'login' => 'bob',   'firstname' => 'Bob',   'lastname' => 'Jones'],
-            ['id' => 3, 'login' => 'svc-bot', 'firstname' => '', 'lastname' => ''],
-        ], 'total_count' => 4], 200),
+        'redmine.test/projects/7/memberships.json*' => Http::response(['memberships' => [
+            ['user' => ['id' => 1, 'name' => 'Alice Smith']],
+            ['user' => ['id' => 2, 'name' => 'Bob Jones']],
+            ['group' => ['id' => 5, 'name' => 'Developers']],
+            ['project' => ['id' => 7]],
+            ['user' => ['id' => 4, 'name' => '']],
+        ], 'total_count' => 5], 200),
+        // User 3 isn't a project member, so it resolves through the per-user fallback.
+        'redmine.test/users/3.json' => Http::response(['user' => [
+            'id' => 3, 'login' => 'svc-bot', 'firstname' => '', 'lastname' => '',
+        ]], 200),
     ]);
 
     $response = (new GetIssueTool)->handle(
@@ -259,15 +264,161 @@ it('renders all supported journal detail field types', function (): void {
         ->and($text)->toContain('svc-bot')
         ->and($text)->toContain('new_val')
         ->and($text)->toContain('custom_field');
+
+    Http::assertNotSent(fn ($req): bool => str_contains((string) $req->url(), '/users.json'));
 });
 
-it('does not fetch users for non-admin when rendering journal history', function (): void {
+it('resolves assignees per user when project memberships are forbidden', function (): void {
+    Http::fake([
+        'redmine.test/issues/40.json*' => Http::response([
+            'issue' => [
+                'id' => 40,
+                'subject' => 'Non-admin key',
+                'project' => ['id' => 8, 'name' => 'App'],
+                'status' => ['name' => 'New'],
+                'priority' => ['name' => 'Normal'],
+                'author' => ['name' => 'Alice'],
+                'created_on' => '2026-05-01T00:00:00Z',
+                'updated_on' => '2026-05-01T00:00:00Z',
+                'done_ratio' => 0,
+                'journals' => [
+                    [
+                        'user' => ['name' => 'Alice'],
+                        'created_on' => '2026-05-02T00:00:00Z',
+                        'notes' => '',
+                        'details' => [
+                            ['name' => 'assigned_to_id', 'old_value' => null, 'new_value' => '1'],
+                            ['name' => 'assigned_to_id', 'old_value' => '1', 'new_value' => '2'],
+                            ['name' => 'assigned_to_id', 'old_value' => '2', 'new_value' => '3'],
+                        ],
+                    ],
+                ],
+            ],
+        ], 200),
+        'redmine.test/issue_statuses.json' => Http::response(['issue_statuses' => []], 200),
+        'redmine.test/enumerations/issue_priorities.json' => Http::response(['issue_priorities' => []], 200),
+        'redmine.test/projects/8/memberships.json*' => Http::response(null, 403),
+        'redmine.test/users/1.json' => Http::response(['user' => [
+            'id' => 1, 'login' => 'alice', 'firstname' => 'Alice', 'lastname' => 'Smith',
+        ]], 200),
+        'redmine.test/users/2.json' => Http::response(null, 404),
+        'redmine.test/users/3.json' => Http::response(['user' => [
+            'id' => 0, 'login' => 'invalid', 'firstname' => '', 'lastname' => '',
+        ]], 200),
+        'redmine.test/users.json*' => Http::response(null, 403),
+    ]);
+
+    $response = (new GetIssueTool)->handle(
+        new Request(['issue_id' => 40]),
+        new RedmineService,
+    );
+
+    $text = $response->content()->toArray()['text'];
+
+    expect($response->isError())->toBeFalse()
+        ->and($text)->toContain('—  →  Alice Smith')
+        ->and($text)->toContain('Alice Smith  →  user #2')
+        ->and($text)->toContain('user #2  →  user #3');
+
+    Http::assertNotSent(fn ($req): bool => str_contains((string) $req->url(), '/users.json'));
+});
+
+it('skips project memberships when the issue has no project id', function (): void {
+    Http::fake([
+        'redmine.test/issues/41.json*' => Http::response([
+            'issue' => [
+                'id' => 41,
+                'subject' => 'No project id',
+                'project' => ['name' => 'App'],
+                'status' => ['name' => 'New'],
+                'priority' => ['name' => 'Normal'],
+                'author' => ['name' => 'Alice'],
+                'created_on' => '2026-05-01T00:00:00Z',
+                'updated_on' => '2026-05-01T00:00:00Z',
+                'done_ratio' => 0,
+                'journals' => [
+                    [
+                        'user' => ['name' => 'Alice'],
+                        'created_on' => '2026-05-02T00:00:00Z',
+                        'notes' => '',
+                        'details' => [
+                            ['name' => 'assigned_to_id', 'old_value' => '1', 'new_value' => '6'],
+                        ],
+                    ],
+                ],
+            ],
+        ], 200),
+        'redmine.test/issue_statuses.json' => Http::response(['issue_statuses' => []], 200),
+        'redmine.test/enumerations/issue_priorities.json' => Http::response(['issue_priorities' => []], 200),
+        'redmine.test/users/1.json' => Http::response(['user' => [
+            'id' => 1, 'login' => 'alice', 'firstname' => 'Alice', 'lastname' => 'Smith',
+        ]], 200),
+        'redmine.test/users/6.json' => Http::response(['other' => []], 200),
+    ]);
+
+    $response = (new GetIssueTool)->handle(
+        new Request(['issue_id' => 41]),
+        new RedmineService,
+    );
+
+    expect($response->isError())->toBeFalse()
+        ->and($response->content()->toArray()['text'])->toContain('Alice Smith  →  user #6');
+
+    Http::assertNotSent(fn ($req): bool => str_contains((string) $req->url(), '/memberships.json'));
+});
+
+it('pages through project memberships to resolve assignees', function (): void {
+    Http::fake([
+        'redmine.test/issues/42.json*' => Http::response([
+            'issue' => [
+                'id' => 42,
+                'subject' => 'Large project',
+                'project' => ['id' => 9, 'name' => 'App'],
+                'status' => ['name' => 'New'],
+                'priority' => ['name' => 'Normal'],
+                'author' => ['name' => 'Alice'],
+                'created_on' => '2026-05-01T00:00:00Z',
+                'updated_on' => '2026-05-01T00:00:00Z',
+                'done_ratio' => 0,
+                'journals' => [
+                    [
+                        'user' => ['name' => 'Alice'],
+                        'created_on' => '2026-05-02T00:00:00Z',
+                        'notes' => '',
+                        'details' => [
+                            ['name' => 'assigned_to_id', 'old_value' => '1', 'new_value' => '2'],
+                        ],
+                    ],
+                ],
+            ],
+        ], 200),
+        'redmine.test/issue_statuses.json' => Http::response(['issue_statuses' => []], 200),
+        'redmine.test/enumerations/issue_priorities.json' => Http::response(['issue_priorities' => []], 200),
+        'redmine.test/projects/9/memberships.json*' => Http::sequence()
+            ->push(['memberships' => [['user' => ['id' => 1, 'name' => 'Alice Smith']]], 'total_count' => 3], 200)
+            ->push(['memberships' => [['user' => ['id' => 2, 'name' => 'Bob Jones']]], 'total_count' => 3], 200)
+            ->push(['memberships' => [], 'total_count' => 3], 200),
+    ]);
+
+    $response = (new GetIssueTool)->handle(
+        new Request(['issue_id' => 42]),
+        new RedmineService,
+    );
+
+    expect($response->isError())->toBeFalse()
+        ->and($response->content()->toArray()['text'])->toContain('Alice Smith  →  Bob Jones');
+
+    Http::assertSent(fn ($req): bool => str_contains((string) $req->url(), 'memberships.json') && str_contains((string) $req->url(), 'offset=2'));
+    Http::assertNotSent(fn ($req): bool => str_contains((string) $req->url(), '/users/'));
+});
+
+it('does not resolve users when journals have no assignee changes', function (): void {
     Http::fake([
         'redmine.test/issues/40.json*' => Http::response([
             'issue' => [
                 'id' => 40,
                 'subject' => 'Meeting prep',
-                'project' => ['name' => 'MCP Test Project'],
+                'project' => ['id' => 12, 'name' => 'MCP Test Project'],
                 'status' => ['name' => 'In Progress'],
                 'priority' => ['name' => 'Normal'],
                 'assigned_to' => ['name' => 'Alice Smith'],
@@ -282,7 +433,7 @@ it('does not fetch users for non-admin when rendering journal history', function
                         'notes' => '',
                         'details' => [
                             ['name' => 'status_id', 'old_value' => '1', 'new_value' => '2'],
-                            ['name' => 'assigned_to_id', 'old_value' => '1', 'new_value' => '5'],
+                            ['name' => 'done_ratio', 'old_value' => '0', 'new_value' => '10'],
                         ],
                     ],
                 ],
@@ -295,7 +446,6 @@ it('does not fetch users for non-admin when rendering journal history', function
         'redmine.test/enumerations/issue_priorities.json' => Http::response(['issue_priorities' => [
             ['id' => 1, 'name' => 'Normal'],
         ]], 200),
-        'redmine.test/users/current.json' => Http::response(['user' => ['id' => 5, 'admin' => false]], 200),
     ]);
 
     $response = (new GetIssueTool)->handle(
@@ -308,10 +458,9 @@ it('does not fetch users for non-admin when rendering journal history', function
     expect($response->isError())->toBeFalse()
         ->and($text)->toContain('Issue #40')
         ->and($text)->toContain('Change History')
-        ->and($text)->toContain('New')
-        ->and($text)->toContain('In Progress')
-        ->and($text)->toContain('Assigned to:')
-        ->and($text)->toContain('1  →  5');
+        ->and($text)->toContain('New  →  In Progress')
+        ->and($text)->toContain('0%  →  10%');
 
-    Http::assertNotSent(fn ($req): bool => str_contains((string) $req->url(), 'users.json'));
+    Http::assertNotSent(fn ($req): bool => str_contains((string) $req->url(), 'memberships.json'));
+    Http::assertNotSent(fn ($req): bool => str_contains((string) $req->url(), '/users'));
 });

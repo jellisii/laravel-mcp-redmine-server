@@ -369,6 +369,37 @@ final readonly class RedmineService extends AbstractHttpService
         return $this->jsonObject($response, 'user');
     }
 
+    /**
+     * @return array<string, mixed>
+     *
+     * @throws ConnectionException
+     * @throws RuntimeException
+     */
+    public function getUser(int $userId): array
+    {
+        $response = $this->get(sprintf('/users/%d.json', $userId));
+        $this->assertSuccessful(__FUNCTION__, $response);
+
+        return $this->jsonObject($response, 'user');
+    }
+
+    /**
+     * @return array{items: list<array<string, mixed>>, total: int}
+     *
+     * @throws ConnectionException
+     * @throws RuntimeException
+     */
+    public function getProjectMemberships(int $projectId, int $offset = 0, int $limit = 100): array
+    {
+        $response = $this->get(sprintf('/projects/%d/memberships.json', $projectId), ['limit' => $limit, 'offset' => $offset]);
+        $this->assertSuccessful(__FUNCTION__, $response);
+
+        $items = $this->jsonList($response, 'memberships');
+        $rawTotal = $response->json('total_count');
+
+        return ['items' => $items, 'total' => is_int($rawTotal) ? $rawTotal : count($items)];
+    }
+
     protected function apiBaseUrl(): string
     {
         return $this->baseUrl;

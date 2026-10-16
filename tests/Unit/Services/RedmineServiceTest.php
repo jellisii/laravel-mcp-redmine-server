@@ -381,3 +381,66 @@ it('uses Basic Auth header when username and password are configured', function 
 
     Http::assertSent(fn ($req): bool => $req->header('Authorization')[0] === 'Basic '.base64_encode('john:secret'));
 });
+
+it('retrieves a single user', function (): void {
+    Http::fake([
+        'redmine.test/users/7.json' => Http::response([
+            'user' => ['id' => 7, 'login' => 'alice', 'firstname' => 'Alice', 'lastname' => 'Smith'],
+        ], 200),
+    ]);
+
+    $user = $this->service->getUser(7);
+
+    expect($user['id'])->toBe(7)
+        ->and($user['login'])->toBe('alice');
+});
+
+it('throws when a single user is not visible', function (): void {
+    Http::fake([
+        'redmine.test/users/7.json' => Http::response(null, 404),
+    ]);
+
+    expect(fn () => $this->service->getUser(7))
+        ->toThrow(RuntimeException::class, 'getUser');
+});
+
+it('retrieves project memberships', function (): void {
+    Http::fake([
+        'redmine.test/projects/3/memberships.json*' => Http::response([
+            'memberships' => [
+                ['id' => 1, 'user' => ['id' => 5, 'name' => 'Alice Smith']],
+                ['id' => 2, 'group' => ['id' => 9, 'name' => 'Developers']],
+            ],
+            'total_count' => 2,
+        ], 200),
+    ]);
+
+    $result = $this->service->getProjectMemberships(3);
+
+    expect($result['items'])->toHaveCount(2)
+        ->and($result['items'][0]['user'])->toBe(['id' => 5, 'name' => 'Alice Smith'])
+        ->and($result['total'])->toBe(2);
+});
+
+it('passes offset and limit to project memberships endpoint', function (): void {
+    Http::fake([
+        'redmine.test/projects/3/memberships.json*' => Http::response(['memberships' => []], 200),
+    ]);
+
+    $result = $this->service->getProjectMemberships(3, 100, 50);
+
+    expect($result['total'])->toBe(0);
+
+    Http::assertSent(fn ($req): bool => str_contains((string) $req->url(), 'offset=100')
+        && str_contains((string) $req->url(), 'limit=50')
+    );
+});
+
+it('throws when project memberships are forbidden', function (): void {
+    Http::fake([
+        'redmine.test/projects/3/memberships.json*' => Http::response(null, 403),
+    ]);
+
+    expect(fn () => $this->service->getProjectMemberships(3))
+        ->toThrow(RuntimeException::class, 'getProjectMemberships');
+});
