@@ -7,6 +7,13 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
+    # Development tooling (rector, phpstan, larastan, pest) is version-sensitive
+    # and intentionally left out of the group: a single blocked bump would hold
+    # up the rest.
+    groups:
+      runtime-minor-patch:
+        dependency-type: production
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: github-actions
     directory: /
@@ -14,3 +21,6 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        patterns: ["*"]
