@@ -1,0 +1,62 @@
+name: Bug report
+description: Something in the MCP server does not work as expected
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. Please fill in the fields below — and remove secrets (`MCP_AUTH_TOKEN`, Redmine API keys, passwords) from anything you paste.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Current behaviour, and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Start the server with `php artisan serve --port=8080`
+        2. Call `get-issue-tool` with `issue_id = …`
+        3. Observe …
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: Release tag or commit SHA you are running.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      value: |
+        - PHP:
+        - Transport: stdio / HTTP
+        - MCP client: Claude Code / Cursor / other
+        - Redmine version:
+        - Installation: `php artisan serve` / docker compose / other
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Excerpts from `storage/logs/laravel.log` or `storage/logs/redmine-*.log`. Redact tokens and private hostnames.
+      render: text
+    validations:
+      required: false
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and this is not a duplicate
+          required: true
+        - label: I removed secrets and private hostnames from the text above
+          required: true

@@ -1,5 +1,7 @@
 # Redmine MCP Server
 
+[![tests](https://github.com/xodert/laravel-mcp-redmine-server/actions/workflows/tests.yml/badge.svg)](https://github.com/xodert/laravel-mcp-redmine-server/actions/workflows/tests.yml)
+
 An [MCP (Model Context Protocol)](https://modelcontextprotocol.io) server built with Laravel 13 that exposes Redmine project-management capabilities to AI agents (Claude Code, Cursor, custom harness agents).
 
 ## Requirements
@@ -334,3 +336,17 @@ config/
 routes/
   ai.php                            — Mcp::web() and Mcp::local() registration
 ```
+
+---
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for local setup, the checks CI enforces, and how to get a change merged. Bug reports and feature requests are welcome through the [issue templates](https://github.com/xodert/laravel-mcp-redmine-server/issues/new/choose).
+
+## Security
+
+Please report vulnerabilities privately — see [SECURITY.md](SECURITY.md).
+
+## License
+
+Released under the [MIT License](LICENSE).
