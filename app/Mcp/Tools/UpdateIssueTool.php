@@ -47,13 +47,27 @@ final class UpdateIssueTool extends Tool
 
             if ($oldAssignee !== $newAssignee) {
                 $lines[] = sprintf('  %-12s  %s  →  %s', 'assigned_to:', $oldAssignee, $newAssignee);
-            } elseif ($assignedToId !== null) {
-                $lines[] = sprintf('  Already assigned to %s.', $newAssignee);
             }
 
             if ($notes !== null) {
                 $lines[] = '  Note added:';
                 $lines[] = '    '.$notes;
+            }
+
+            if ($assignedToId !== null && $this->assigneeId($after) !== $assignedToId) {
+                $lines[] = '';
+                $lines[] = sprintf(
+                    'Assignment was NOT applied: the assignee is still %s. '.
+                    'Redmine silently ignores fields the API user may not edit, so the API user likely lacks '.
+                    'the "Edit issues" permission (or the workflow makes Assignee read-only) in this project.',
+                    $newAssignee,
+                );
+
+                return Response::error(implode("\n", $lines));
+            }
+
+            if ($assignedToId !== null && $oldAssignee === $newAssignee) {
+                $lines[] = sprintf('  Already assigned to %s.', $newAssignee);
             }
 
             return Response::text(implode("\n", $lines));
@@ -84,5 +98,19 @@ final class UpdateIssueTool extends Tool
     private function assigneeName(array $issue): string
     {
         return $this->strOf(data_get($issue, 'assigned_to.name'), 'Unassigned');
+    }
+
+    /**
+     * @param  array<string, mixed>  $issue
+     */
+    private function assigneeId(array $issue): ?int
+    {
+        $id = data_get($issue, 'assigned_to.id');
+
+        if ($id === null) {
+            return null;
+        }
+
+        return $this->intOf($id);
     }
 }

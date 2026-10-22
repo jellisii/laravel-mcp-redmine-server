@@ -82,6 +82,45 @@ it('reports when the issue is already assigned to the requested user', function 
         ->not->toContain('Note added');
 });
 
+it('returns error when redmine silently ignores the assignment', function (): void {
+    Http::fake([
+        'redmine.test/issues/42.json' => Http::sequence()
+            ->push(['issue' => ['id' => 42, 'subject' => 'Fix bug', 'assigned_to' => ['id' => 3, 'name' => 'John Doe']]], 200)
+            ->push(null, 204)
+            ->push(['issue' => ['id' => 42, 'subject' => 'Fix bug', 'assigned_to' => ['id' => 3, 'name' => 'John Doe']]], 200),
+    ]);
+
+    $response = (new UpdateIssueTool)->handle(
+        new Request(['issue_id' => 42, 'notes' => 'Handing this off', 'assigned_to_id' => 46]),
+        new RedmineService,
+    );
+
+    expect($response->isError())->toBeTrue()
+        ->and($response->content()->toArray()['text'])
+        ->toContain('Note added')
+        ->toContain('Assignment was NOT applied')
+        ->toContain('the assignee is still John Doe')
+        ->toContain('Edit issues')
+        ->not->toContain('Already assigned');
+});
+
+it('returns error when redmine ignores the assignment of an unassigned issue', function (): void {
+    Http::fake([
+        'redmine.test/issues/42.json' => Http::sequence()
+            ->push(['issue' => ['id' => 42, 'subject' => 'Fix bug']], 200)
+            ->push(null, 204)
+            ->push(['issue' => ['id' => 42, 'subject' => 'Fix bug']], 200),
+    ]);
+
+    $response = (new UpdateIssueTool)->handle(
+        new Request(['issue_id' => 42, 'assigned_to_id' => 46]),
+        new RedmineService,
+    );
+
+    expect($response->isError())->toBeTrue()
+        ->and($response->content()->toArray()['text'])->toContain('the assignee is still Unassigned');
+});
+
 it('requires notes or assigned_to_id', function (): void {
     Http::fake();
 
